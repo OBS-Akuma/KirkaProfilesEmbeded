@@ -147,7 +147,6 @@ async function handleRequest(request) {
     }
 
     // Handle gradient from badge config
-    let usernameGradientStyle = '';
     let gradientStops = '';
     let gradientRotation = 90;
     let gradientFill = 'white';
@@ -179,13 +178,12 @@ async function handleRequest(request) {
       
       gradientStops = stops;
       gradientRotation = rotDeg;
-      usernameGradientStyle = `fill="url(#nameGrad)"`;
       gradientFill = 'url(#nameGrad)';
     }
 
     // Bio text
     const bio = d.bio || '';
-    const displayBio = bio.length > 45 ? bio.substring(0, 42) + '...' : bio;
+    const displayBio = bio.length > 50 ? bio.substring(0, 47) + '...' : bio;
     
     // Badges position (top right)
     const badgesStartY = 12;
@@ -194,12 +192,12 @@ async function handleRequest(request) {
     const viewsX = 620 + (badgesList.length * 34) + 10;
     const viewsY = 27;
 
-    // Get display name (truncate if too long)
+    // Combined username + short ID
     const displayName = d.name && d.name.length > 12 ? d.name.substring(0, 9) + '...' : (d.name || 'Unknown');
-    const nameWidth = (displayName.length + d.shortId.length + 1) * 7.5;
+    const fullDisplay = `${displayName}#${d.shortId || '???'}`;
 
     const svg = `<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" width="750" height="80" viewBox="0 0 750 80">
+<svg xmlns="http://www.w3.org/2000/svg" width="780" height="80" viewBox="0 0 780 80">
   <defs>
     <style>
       @font-face {
@@ -217,7 +215,7 @@ async function handleRequest(request) {
   </defs>
 
   <!-- Background -->
-  <rect width="750" height="80" fill="#1a1a2e" rx="12"/>
+  <rect width="780" height="80" fill="#1a1a2e" rx="12"/>
   <rect x="0" y="8" width="4" height="64" fill="#1A8E50" rx="2" opacity="0.3"/>
 
   <!-- Avatar -->
@@ -227,15 +225,14 @@ async function handleRequest(request) {
   <!-- Clan Tag (above username) -->
   ${d.clan ? `<text x="82" y="22" fill="#2aae60" font-size="9" font-family="Minecraft, monospace">${esc(d.clan)}</text>` : ''}
 
-  <!-- Username + ShortID as one text with same color -->
-  <text x="82" y="38" font-size="14" font-weight="bold" font-family="Minecraft, monospace" ${usernameGradientStyle || 'fill="white"'}>${esc(displayName)}</text>
-  <text x="${82 + displayName.length * 7.5}" y="38" font-size="14" font-weight="bold" font-family="Minecraft, monospace" ${usernameGradientStyle || 'fill="white"'}>#${esc(d.shortId || '???')}</text>
+  <!-- Username + ShortID combined as ONE text -->
+  <text x="82" y="38" font-size="14" font-weight="bold" font-family="Minecraft, monospace" fill="${gradientFill}">${esc(fullDisplay)}</text>
 
-  <!-- Bio (lowered by 5px) -->
-  ${displayBio ? `<text x="82" y="62" fill="#ffcc80" font-size="9" font-family="Pixelogist, monospace">${esc(displayBio)}</text>` : ''}
+  <!-- Bio (moved to bottom, y=72, last line before edge) -->
+  ${displayBio ? `<text x="82" y="72" fill="#ffcc80" font-size="9" font-family="Pixelogist, monospace">${esc(displayBio)}</text>` : ''}
 
-  <!-- Stats -->
-  <g transform="translate(210, 0)">
+  <!-- Stats (shifted right by increasing translate X from 210 to 260) -->
+  <g transform="translate(260, 0)">
     <text x="20" y="28" fill="#aaa" font-size="7" text-anchor="middle">LVL</text>
     <text x="20" y="48" fill="#1A8E50" font-size="14" font-weight="bold" font-family="Minecraft, monospace" text-anchor="middle">${d.level || 0}</text>
     <rect x="5" y="55" width="30" height="3" fill="rgba(255,255,255,0.2)" rx="1.5"/>
@@ -255,12 +252,12 @@ async function handleRequest(request) {
   </g>
 
   <!-- Right section - Badges (top right) -->
-  <g transform="translate(620, ${badgesStartY})">
+  <g transform="translate(680, ${badgesStartY})">
     ${badgesList.map((base64Badge, i) => `<image x="${i * 34}" y="0" width="30" height="30" href="${esc(base64Badge)}"/>`).join('')}
   </g>
 
   <!-- Views (top right, after badges) -->
-  <text x="${viewsX}" y="${viewsY}" fill="#444" font-size="8" font-family="monospace">${d.viewCount || 0} views</text>
+  <text x="${viewsX + 60}" y="${viewsY}" fill="#444" font-size="8" font-family="monospace">${d.viewCount || 0} views</text>
 </svg>`;
 
     return new Response(svg, {
