@@ -41,12 +41,25 @@ async function handleRequest(request) {
 
   async function imageToBase64(imageUrl) {
     try {
-      const response = await fetch(imageUrl, {
-        headers: { 'Referer': 'https://kirka.io/' }
+      let finalUrl = imageUrl;
+      if (imageUrl.includes('imgur.com')) {
+        const match = imageUrl.match(/imgur\.com\/([a-zA-Z0-9]+)(?:\.png|\.jpg|\.jpeg|\.gif)?/);
+        if (match) {
+          finalUrl = `https://i.imgur.com/${match[1]}.png`;
+        }
+      }
+      const response = await fetch(finalUrl, {
+        headers: { 
+          'User-Agent': 'Mozilla/5.0',
+          'Accept': 'image/*'
+        }
       });
+      const contentType = response.headers.get('Content-Type') || '';
+      if (!contentType.startsWith('image/')) {
+        return null;
+      }
       const blob = await response.arrayBuffer();
       const base64 = btoa(String.fromCharCode(...new Uint8Array(blob)));
-      const contentType = response.headers.get('Content-Type') || 'image/png';
       return `data:${contentType};base64,${base64}`;
     } catch(e) {
       return null;
@@ -134,6 +147,7 @@ async function handleRequest(request) {
     
     const invDisplay = invLoading ? '...' : fmtValue(invValue);
 
+    // Build badges list - check if discord exists in the profile data
     const discordBadge = d.discord ? 'https://raw.githubusercontent.com/OBS-Akuma/KirkaSkins/refs/heads/main/img/linked.webp' : null;
     let badgeUrls = (badge && badge.badges) ? [...badge.badges] : [];
     if (discordBadge) badgeUrls.push(discordBadge);
@@ -150,33 +164,44 @@ async function handleRequest(request) {
     let gradientStops = '';
     let gradientRotation = 90;
     let gradientFill = 'white';
-    
+
     if (badge && badge.gradient) {
       let rotDeg = 90;
       const rot = badge.gradient.rot || '90deg';
       
-      if (rot === 'to top') rotDeg = -90;
-      else if (rot === 'to bottom') rotDeg = 90;
-      else if (rot === 'to left') rotDeg = 0;
-      else if (rot === 'to right') rotDeg = 180;
-      else if (rot.includes('deg')) rotDeg = parseInt(rot);
-      else rotDeg = parseInt(rot) || 90;
+      if (rot === 'to top') rotDeg = 0;
+      else if (rot === 'to bottom') rotDeg = 180;
+      else if (rot === 'to left') rotDeg = 270;
+      else if (rot === 'to right') rotDeg = 90;
+      else if (rot.includes('deg')) {
+        rotDeg = parseInt(rot);
+        if (isNaN(rotDeg)) rotDeg = 90;
+      } else {
+        rotDeg = parseInt(rot);
+        if (isNaN(rotDeg)) rotDeg = 90;
+      }
       
-      const stops = badge.gradient.stops.map((stop, idx) => {
-        let color = stop;
-        let offset = idx * (100 / (badge.gradient.stops.length - 1));
-        
-        if (stop.includes(' ')) {
-          const parts = stop.split(' ');
-          color = parts[0];
-          const offsetStr = parts[1].replace('%', '');
-          offset = parseFloat(offsetStr);
+      const stops = badge.gradient.stops.map((stop) => {
+        const parts = stop.trim().split(' ');
+        const color = parts[0];
+        let offset = parts[1] || '';
+        if (offset && !offset.includes('%')) {
+          offset = `${offset}%`;
+        } else if (!offset) {
+          offset = null;
         }
-        
-        return `<stop offset="${offset}%" stop-color="${color}"/>`;
+        return { color, offset };
+      });
+      
+      const stopElements = stops.map((stop, idx) => {
+        let offset = stop.offset;
+        if (!offset) {
+          offset = `${idx * (100 / (stops.length - 1))}%`;
+        }
+        return `<stop offset="${offset}" stop-color="${stop.color}"/>`;
       }).join('');
       
-      gradientStops = stops;
+      gradientStops = stopElements;
       gradientRotation = rotDeg;
       gradientFill = 'url(#nameGrad)';
     }
@@ -188,10 +213,6 @@ async function handleRequest(request) {
     // Badges position (top right)
     const badgesStartY = 12;
     
-    // Views position (top right, after badges)
-    const viewsX = 620 + (badgesList.length * 34) + 10;
-    const viewsY = 27;
-
     // Combined username + short ID
     const displayName = d.name && d.name.length > 12 ? d.name.substring(0, 9) + '...' : (d.name || 'Unknown');
     const fullDisplay = `${displayName}#${d.shortId || '???'}`;
@@ -210,7 +231,7 @@ async function handleRequest(request) {
       }
       text { font-family: 'Pixelogist', 'Minecraft', Arial, sans-serif; }
     </style>
-    ${gradientStops ? `<linearGradient id="nameGrad" x1="0%" y1="0%" x2="100%" y2="0%" gradientTransform="rotate(${gradientRotation}, 0.5, 0.5)">${gradientStops}</linearGradient>` : ''}
+    ${gradientStops ? `<linearGradient id="nameGrad" x1="0%" y1="0%" x2="100%" y2="100%" gradientTransform="rotate(${gradientRotation}, 0.5, 0.5)">${gradientStops}</linearGradient>` : ''}
     <clipPath id="avatarClip"><rect x="8" y="8" width="64" height="64" rx="10"/></clipPath>
   </defs>
 
@@ -222,16 +243,16 @@ async function handleRequest(request) {
   <rect x="8" y="8" width="64" height="64" rx="10" fill="#1A8E50"/>
   ${avatarDataUrl ? `<image x="8" y="8" width="64" height="160" href="${esc(avatarDataUrl)}" clip-path="url(#avatarClip)" preserveAspectRatio="xMidYMin slice"/>` : `<text x="40" y="48" text-anchor="middle" fill="white" font-size="28" font-family="Minecraft, monospace">${esc(d.name ? d.name[0].toUpperCase() : '?')}</text>`}
 
-  <!-- Clan Tag (above username) -->
+  <!-- Clan Tag -->
   ${d.clan ? `<text x="82" y="22" fill="#2aae60" font-size="9" font-family="Minecraft, monospace">${esc(d.clan)}</text>` : ''}
 
-  <!-- Username + ShortID combined as ONE text -->
+  <!-- Username + ShortID combined -->
   <text x="82" y="38" font-size="14" font-weight="bold" font-family="Minecraft, monospace" fill="${gradientFill}">${esc(fullDisplay)}</text>
 
-  <!-- Bio (moved to bottom, y=72, last line before edge) -->
+  <!-- Bio -->
   ${displayBio ? `<text x="82" y="72" fill="#ffcc80" font-size="9" font-family="Pixelogist, monospace">${esc(displayBio)}</text>` : ''}
 
-  <!-- Stats (shifted right by increasing translate X from 210 to 260) -->
+  <!-- Stats -->
   <g transform="translate(260, 0)">
     <text x="20" y="28" fill="#aaa" font-size="7" text-anchor="middle">LVL</text>
     <text x="20" y="48" fill="#1A8E50" font-size="14" font-weight="bold" font-family="Minecraft, monospace" text-anchor="middle">${d.level || 0}</text>
@@ -251,13 +272,13 @@ async function handleRequest(request) {
     <text x="275" y="48" fill="#ffd700" font-size="11" font-weight="bold" font-family="Minecraft, monospace" text-anchor="middle">${invDisplay}</text>
   </g>
 
-  <!-- Right section - Badges (top right) -->
+  <!-- Badges (top right) -->
   <g transform="translate(680, ${badgesStartY})">
     ${badgesList.map((base64Badge, i) => `<image x="${i * 34}" y="0" width="30" height="30" href="${esc(base64Badge)}"/>`).join('')}
   </g>
 
-  <!-- Views (top right, after badges) -->
-  <text x="${viewsX + 60}" y="${viewsY}" fill="#444" font-size="8" font-family="monospace">${d.viewCount || 0} views</text>
+  <!-- Views (below badges) -->
+  <text x="710" y="52" fill="#444" font-size="8" font-family="monospace" text-anchor="end">${d.viewCount || 0} views</text>
 </svg>`;
 
     return new Response(svg, {
