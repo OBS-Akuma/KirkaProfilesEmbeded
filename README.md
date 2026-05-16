@@ -8,6 +8,7 @@ Dynamic profile cards for Kirka players.
 
 Replace NUGGET with any player's short ID:
 
+(https://kirkaprofilesembeded.morgan905499.workers.dev/?meow=NUGGET)
 ![Profile](https://kirkaprofilesembeded.morgan905499.workers.dev/?meow=NUGGET)
 
 Clickable:
