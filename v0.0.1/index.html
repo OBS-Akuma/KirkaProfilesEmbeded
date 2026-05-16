@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <style>
+    @font-face {
+      font-family: 'Pixelogist';
+      src: url('https://raw.githubusercontent.com/imnotkoolkid/KCH/main/resources/obs-page/Pixelogist.ttf');
+    }
+    @font-face {
+      font-family: 'Minecraft';
+      src: url('https://raw.githubusercontent.com/imnotkoolkid/KCH/main/resources/obs-page/Minecraft.ttf');
+    }
+  </style>
+</head>
+<body>
+  <div id="output"></div>
+
+  <script>
+    const urlParams = new URLSearchParams(window.location.search);
+    const shortId = urlParams.get('meow') || 'NUGGET';
+
+    let itemsData = {};
+    let badgesMap = {};
+    const skinValueCache = new Map();
+
+    function esc(str) {
+      if (!str) return '';
+      return String(str)
+        .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+        .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+    }
+
+    function fmtShort(num) {
+      if (num == null) return '0';
+      if (num >= 1_000_000) return (num/1_000_000).toFixed(1)+'M';
+      if (num >= 1_000) return (num/1_000).toFixed(1)+'K';
+      return String(num);
+    }
+
+    function fmtValue(val) {
+      if (!val && val !== 0) return 'N/A';
+      const n = parseFloat(val);
+      if (isNaN(n)) return String(val);
+      if (n >= 1_000_000_000) return (n/1_000_000_000).toFixed(2)+'B';
+      if (n >= 1_000_000) return (n/1_000_000).toFixed(2)+'M';
+      if (n >= 1_000) return (n/1_000).toFixed(1)+'K';
+      return String(n);
+    }
+
+    function getSkinItem(skin) {
+      if (!skin) return null;
+      return itemsData[skin.id] || itemsData[(skin.name||'').toLowerCase()] || null;
+    }
+
+    function generateCompactSVG(d, badge, invValue, invLoading) {
+      const xpPct = d.xpUntilNextLevel ? Math.min(100,(d.xpSinceLastLevel/d.xpUntilNextLevel)*100) : 0;
+      const bodySkinItem = getSkinItem(d.activeBodySkin);
+      const avatarRender = bodySkinItem?.renderUrl || null;
+      const invDisplay = invLoading ? '...' : fmtValue(invValue);
+
+      let usernameGradient = '';
+      let usernameFill = 'white';
+      
+      if (badge?.gradient) {
+        const stops = badge.gradient.stops.map((stop, i) => {
+          if (stop.includes('%')) {
+            const [color, pct] = stop.split(' ');
+            return `<stop offset="${pct}" stop-color="${color}"/>`;
+          }
+          return `<stop offset="${i * 100 / (badge.gradient.stops.length - 1)}%" stop-color="${stop}"/>`;
+        }).join('');
+        const rot = badge.gradient.rot || '90deg';
+        
+        usernameGradient = `<linearGradient id="nameGrad" x1="0%" y1="0%" x2="100%" y2="0%" gradientTransform="rotate(${rot})">${stops}</linearGradient>`;
+        usernameFill = 'url(#nameGrad)';
+      }
+
+      const discordBadge = d.discord ? 'https://raw.githubusercontent.com/OBS-Akuma/KirkaSkins/refs/heads/main/img/linked.webp' : null;
+      let badges = [...(badge?.badges || [])];
+      if (discordBadge) {
+        badges.push(discordBadge);
+      }
+
+      const shortIdWidth = Math.max(80, d.shortId.length * 7 + 16);
+      const statsStartX = 82 + shortIdWidth + 15;
+      
+      const stats = [
+        { label: 'LVL', value: d.level || 0, width: 50, hasBar: true, xpPct: xpPct },
+        { label: 'KLO', value: d.klo?.toFixed(0) || 0, width: 55 },
+        { label: 'COINS', value: fmtShort(d.coins), width: 60, gold: true },
+        { label: 'DIAMONDS', value: d.diamonds || 0, width: 65 },
+        { label: 'INV VALUE', value: invDisplay, width: 70, gold: true }
+      ];
+
+      let currentX = statsStartX;
+      const statPositions = [];
+      
+      stats.forEach((stat) => {
+        const centerX = currentX + (stat.width / 2);
+        statPositions.push({
+          ...stat,
+          centerX: centerX,
+          labelX: centerX,
+          valueX: centerX,
+          barX: currentX + 5,
+          width: stat.width
+        });
+        currentX += stat.width + 8;
+      });
+
+      const totalWidth = Math.max(750, currentX + 20);
+      const badgesStartX = totalWidth - 120;
+
+      return `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="${totalWidth}" height="80" viewBox="0 0 ${totalWidth} 80">
+  <defs>
+    <style>
+      @font-face {
+        font-family: 'Pixelogist';
+        src: url('https://raw.githubusercontent.com/imnotkoolkid/KCH/main/resources/obs-page/Pixelogist.ttf');
+      }
+      @font-face {
+        font-family: 'Minecraft';
+        src: url('https://raw.githubusercontent.com/imnotkoolkid/KCH/main/resources/obs-page/Minecraft.ttf');
+      }
+      ${badge?.font && !badge.font.includes('Minecraft.ttf') ? `@font-face { font-family: 'CustomFont'; src: url('${badge.font}'); }` : ''}
+      text { font-family: 'Pixelogist', 'Minecraft', 'Arial', sans-serif; }
+      .username { font-family: ${badge?.font && !badge.font.includes('Minecraft.ttf') ? "'CustomFont', " : ""}'Minecraft', 'Pixelogist', Arial, sans-serif; }
+    </style>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1a1a2e"/>
+      <stop offset="100%" stop-color="#0d0d1a"/>
+    </linearGradient>
+    <linearGradient id="header" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#1A8E50"/>
+      <stop offset="100%" stop-color="#2aae60"/>
+    </linearGradient>
+    ${usernameGradient}
+    <clipPath id="avatarClip"><rect x="12" y="8" width="64" height="64" rx="10"/></clipPath>
+  </defs>
+
+  <rect width="${totalWidth}" height="80" fill="url(#bg)" rx="12"/>
+  <rect x="0" y="8" width="4" height="64" fill="url(#header)" rx="2" opacity="0.3"/>
+
+  <rect x="12" y="8" width="64" height="64" rx="10" fill="url(#header)"/>
+  ${avatarRender ? `<image x="12" y="8" width="64" height="160" href="${esc(avatarRender)}" clip-path="url(#avatarClip)" preserveAspectRatio="xMidYMin slice"/>` : `<text x="44" y="48" text-anchor="middle" fill="white" font-size="28" font-family="Minecraft, monospace">${esc(d.name?.[0]?.toUpperCase()||'?')}</text>`}
+
+  <text x="86" y="30" font-size="14" font-weight="bold" class="username" fill="${usernameFill}">
+    <tspan x="86" dy="0">${esc(d.name.length > 15 ? d.name.substring(0, 12) + '...' : d.name)}</tspan>
+  </text>
+
+  <rect x="86" y="42" width="${shortIdWidth}" height="18" rx="5" fill="rgba(26,142,80,0.2)" stroke="#1A8E50" stroke-width="1"/>
+  <text x="94" y="55" fill="#1A8E50" font-size="9" font-family="monospace" font-weight="bold">${esc(d.shortId)}</text>
+
+  ${statPositions.map(stat => `
+    <g>
+      <text x="${stat.labelX}" y="28" fill="#aaa" font-size="7" text-anchor="middle">${stat.label}</text>
+      <text x="${stat.valueX}" y="48" fill="${stat.gold ? '#ffd700' : '#1A8E50'}" font-size="14" font-weight="bold" font-family="Minecraft, monospace" text-anchor="middle">${stat.value}</text>
+      ${stat.hasBar ? `
+        <rect x="${stat.barX}" y="55" width="${stat.width - 10}" height="3" fill="rgba(255,255,255,0.2)" rx="1.5"/>
+        <rect x="${stat.barX}" y="55" width="${(stat.width - 10) * (stat.xpPct / 100)}" height="3" fill="#1A8E50" rx="1.5"/>
+      ` : ''}
+    </g>
+    <line x1="${stat.barX + stat.width - 3}" y1="15" x2="${stat.barX + stat.width - 3}" y2="65" stroke="rgba(26,142,80,0.15)" stroke-width="1"/>
+  `).join('')}
+
+  ${badges.map((url, i) => `
+    <image x="${badgesStartX + (i * 26)}" y="18" width="22" height="22" href="${esc(url)}"/>
+  `).join('')}
+
+  ${d.clan ? `<text x="${badgesStartX + (badges.length * 26) + 10}" y="35" fill="#2aae60" font-size="10" font-family="Minecraft, monospace">${esc(d.clan)}</text>` : ''}
+  
+  <text x="${totalWidth - 10}" y="68" text-anchor="end" fill="#444" font-size="7" font-family="monospace">${d.viewCount||0} views</text>
+</svg>`;
+    }
+
+    async function main() {
+      try {
+        const [skins, badges, profileRes] = await Promise.all([
+          fetch('https://raw.githubusercontent.com/OBS-Akuma/KirkaSkins/refs/heads/main/AllItemData.json').then(r=>r.json()).catch(()=>[]),
+          fetch('https://raw.githubusercontent.com/OBS-Akuma/KirkaBadges/refs/heads/main/Json/badge.json').then(r=>r.json()).catch(()=>[]),
+          fetch('https://www.smudgy.store/api/getprofile',{
+            method:'POST',
+            headers:{'Content-Type':'application/json'},
+            body:JSON.stringify({userId:`#${shortId}`,isShortId:true})
+          }).then(r=>r.json())
+        ]);
+
+        (Array.isArray(skins)?skins:[]).forEach(item=>{
+          if(item.id) itemsData[item.id]=item;
+          if(item.name) itemsData[item.name.toLowerCase()]=item;
+        });
+
+        const entries = Array.isArray(badges)?badges:Object.values(badges);
+        entries.forEach(e=>{ if(e?.shortId) badgesMap[e.shortId.toUpperCase()]=e; });
+
+        if (!profileRes.success || !profileRes.data) {
+          throw new Error(profileRes.message || profileRes.error || 'Profile not found');
+        }
+
+        const d = profileRes.data;
+        const badge = badgesMap[(d.shortId||'').toUpperCase()] || null;
+
+        let invValue = null;
+        let invLoading = true;
+
+        try {
+          const invRes = await fetch('https://www.smudgy.store/api/getinventory',{
+            method:'POST',
+            headers:{'Content-Type':'application/json'},
+            body:JSON.stringify({userId:`#${shortId}`,isShortId:true})
+          });
+          const invData = await invRes.json();
+          if (invData.success && invData.data?.length) {
+            const items = invData.data;
+            const uniqueNames = [...new Set(items.map(i=>i.item.name))];
+            const uncached = uniqueNames.filter(n=>!skinValueCache.has(n.toLowerCase()));
+            if (uncached.length > 0) {
+              const priceRes = await fetch(`https://www.smudgy.store/api/pricecalc?price=${encodeURIComponent(uncached.join(','))}`);
+              const priceData = await priceRes.json();
+              if (priceData.breakdown) {
+                for(const [name,val] of Object.entries(priceData.breakdown)) {
+                  skinValueCache.set(name.toLowerCase(), val);
+                }
+              }
+            }
+            let total = 0;
+            items.forEach(item=>{
+              const v = skinValueCache.get(item.item.name.toLowerCase())||0;
+              total += v*(item.amount||1);
+            });
+            invValue = total;
+          }
+          invLoading = false;
+        } catch(e) {
+          invLoading = false;
+        }
+
+        const svg = generateCompactSVG(d, badge, invValue, invLoading);
+        document.body.innerHTML = svg;
+        document.body.style.margin = '0';
+        document.body.style.padding = '0';
+        document.body.style.background = 'transparent';
+
+      } catch(err) {
+        document.body.innerHTML = `<svg width="400" height="50" xmlns="http://www.w3.org/2000/svg"><rect width="400" height="50" fill="#1a1a2e" rx="8"/><text x="200" y="30" text-anchor="middle" fill="#ff4444" font-family="monospace" font-size="11">Error: ${err.message}</text></svg>`;
+      }
+    }
+
+    main();
+  </script>
+</body>
+</html>
