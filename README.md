@@ -1,3 +1,5 @@
+# i'm aware i made a typo embedded*
+
 # Kirka Profile Embed
 
 Dynamic profile cards for Kirka players.
